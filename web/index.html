@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>reasoning-lab · 推理树可视化</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="bar">
+  <h1>reasoning-lab</h1>
+  <div class="bar-status" id="status-line">loading…</div>
+  <nav class="bar-modes">
+    <button class="mode active" data-mode="live">Live search</button>
+    <button class="mode" data-mode="replay">Trace replay</button>
+  </nav>
+</header>
+
+<main class="zones">
+  <!-- zone 1 · problems + run controls -->
+  <section class="zone" id="zone-problems" aria-label="Problem bank">
+    <div class="zone-head">
+      <span>题库</span>
+      <span class="zone-count" id="problem-count">–</span>
+    </div>
+    <div class="filters">
+      <select id="filter-subject" aria-label="Subject filter">
+        <option value="">all subjects</option>
+        <option value="math">math</option>
+        <option value="physics">physics</option>
+      </select>
+      <select id="filter-level" aria-label="Level filter">
+        <option value="">all levels</option>
+      </select>
+    </div>
+    <ul class="problem-list" id="problem-list"></ul>
+
+    <div class="run-form">
+      <label>strategy
+        <select id="run-strategy"></select>
+      </label>
+      <label>prm
+        <select id="run-prm"></select>
+      </label>
+      <div class="run-grid">
+        <label>n samples<input id="cfg-n-samples" type="number" min="1" max="32" value="8"></label>
+        <label>branch<input id="cfg-branch-factor" type="number" min="1" max="6" value="3"></label>
+        <label>depth<input id="cfg-max-depth" type="number" min="1" max="12" value="8"></label>
+        <label>beam<input id="cfg-beam-width" type="number" min="1" max="6" value="2"></label>
+        <label>max calls<input id="cfg-max-llm-calls" type="number" min="1" max="400" value="120"></label>
+        <label>temp<input id="cfg-temperature" type="number" step="0.1" min="0" max="1.5" value="0.7"></label>
+      </div>
+      <button class="primary" id="btn-start">Start search</button>
+    </div>
+  </section>
+
+  <!-- zone 2 · the tree itself -->
+  <section class="zone" id="zone-tree" aria-label="Reasoning tree">
+    <div class="zone-head">
+      <span>推理树</span>
+      <span class="zone-count" id="tree-count">no session</span>
+      <div class="legend">
+        <i class="dot pass"></i>pass
+        <i class="dot fail"></i>fail
+        <i class="dot unknown"></i>unknown
+        <i class="dot pruned"></i>pruned
+        <i class="dot answer"></i>answer
+      </div>
+      <div class="session-controls" id="session-controls">
+        <button id="btn-pause" disabled>Pause</button>
+        <button id="btn-resume" disabled>Resume</button>
+        <button id="btn-stop" disabled>Stop</button>
+      </div>
+    </div>
+    <div class="canvas-wrap" id="canvas-wrap">
+      <svg id="tree" role="img" aria-label="search tree"></svg>
+      <div class="canvas-hint" id="canvas-hint">start a search, or open a recorded run in replay mode</div>
+    </div>
+  </section>
+
+  <!-- zone 3 · inspector + interventions -->
+  <section class="zone" id="zone-inspect" aria-label="Step inspector">
+    <div class="zone-head"><span>步骤检查</span><span class="zone-count" id="node-id">–</span></div>
+    <div id="inspector" class="inspector">
+      <p class="empty">click a node in the tree</p>
+    </div>
+  </section>
+
+  <!-- zone 4 · live log, ranking, metrics -->
+  <section class="zone" id="zone-monitor" aria-label="Run monitor">
+    <div class="tabs">
+      <button class="tab active" data-tab="events">events</button>
+      <button class="tab" data-tab="candidates">candidates</button>
+      <button class="tab" data-tab="metrics">metrics</button>
+      <button class="tab" data-tab="replay">runs</button>
+    </div>
+    <div class="tabpane" id="pane-events"><ol id="event-log"></ol></div>
+    <div class="tabpane hidden" id="pane-candidates">
+      <table class="tbl" id="candidate-table">
+        <thead><tr><th>answer</th><th>score</th><th>status</th><th>depth</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="tabpane hidden" id="pane-metrics"><pre id="metrics-box">–</pre></div>
+    <div class="tabpane hidden" id="pane-replay">
+      <ul class="run-list" id="run-list"></ul>
+      <select id="replay-key" size="8" aria-label="Recorded jobs"></select>
+      <button id="btn-replay">Load trace</button>
+    </div>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

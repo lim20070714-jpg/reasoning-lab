@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --extra dev --frozen
+      - name: Lint
+        run: uv run ruff check src tests scripts
+      - name: Type check
+        run: uv run mypy src/reasoning_lab
+      - name: Dataset coverage
+        run: uv run python scripts/check_dataset.py
+      - name: Tests
+        run: uv run python -m pytest tests -q
+
+  demo:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --extra dev --frozen
+      - name: Offline evaluation across all strategies
+        run: |
+          uv run python -m reasoning_lab.cli eval --mock --prm symbolic \
+            --run-id ci-smoke --data-dir data --no-appendix
+      - name: Report exists
+        run: test -s runs/ci-smoke/report.md
