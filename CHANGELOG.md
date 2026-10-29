@@ -5,7 +5,8 @@ follow semantic versioning.
 
 ## [0.2.0] - 2026-10-28
 
-First run against a real model, and the three defects it exposed.
+First run against a real model, the four parsing/search defects it exposed, and
+the TTRL-style label-free reward metric.
 
 ### Added
 
@@ -61,6 +62,10 @@ First run against a real model, and the three defects it exposed.
 - Tests: 88 → 95, covering the TTRL metric (correct majority, incorrect majority,
   report section), the LaTeX/prose verifier case, the uninvertible-system case, the
   error-retrying resume and the two answer-parsing fixes.
+- README now reports real-model numbers: run `local-qwen25-7b-pilot`, 12 problems
+  × 5 strategies against a local `Qwen2.5-7B-Instruct-Q4_K_M` llama.cpp server,
+  60 records, 0 errors, 874 calls, 343,115 tokens. The mock-backend table is kept
+  as a separate subsection.
 
 ## [0.1.0] - 2026-10-18
 

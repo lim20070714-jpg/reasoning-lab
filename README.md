@@ -120,11 +120,63 @@ search runs slowly enough to steer by hand.
 
 ## Measured results
 
-All figures below come from `reasoning-lab eval --mock --prm symbolic --data-dir data`
-(run id `readme-verify`, 200 records, 0 errors, 5,887 model calls, 773,101 tokens,
-31.8 s wall time on 2-way concurrency). **The backend is the offline mock, so these
-numbers characterise the harness, not any real model.** They exist to prove the
-plumbing is deterministic and to give a fresh clone something to compare against.
+### Real model · Qwen2.5-7B-Instruct
+
+Run id `local-qwen25-7b-pilot`: 12 problems (math 8, physics 4) × 5 strategies,
+60 records, 0 errors, 874 model calls (11.7% cache hits), 343,115 tokens,
+19,587 s wall time on 4-way concurrency. Backend is a local llama.cpp server
+(`Qwen2.5-7B-Instruct-Q4_K_M`, OpenAI-compatible endpoint), PRM `symbolic`,
+`max_llm_calls=40`, `n_samples=8`, `branch=3`, `depth=8`. The full report and the
+run's own checkpoint files are committed under
+[`docs/reports/`](docs/reports/local-qwen25-7b-pilot.md).
+
+| strategy | accuracy | oracle any | oracle PRM | calls | tokens | tokens/correct | ECE |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `cot` | 91.7% | 91.7% | 91.7% | 1.000 | 372 | 406 | 0.209 |
+| `self_consistency` | 91.7% | 91.7% | 91.7% | 8.000 | 3022 | 3297 | 0.251 |
+| `best_of_n` | 91.7% | 91.7% | 91.7% | 8.000 | 3021 | 3296 | 0.251 |
+| `tot` | 83.3% | 91.7% | 83.3% | 15.830 | 8772 | 10527 | 0.295 |
+| `mcts` | 91.7% | 100.0% | 91.7% | 40.000 | 13404 | 14623 | 0.143 |
+
+This subset is small and easy enough that the four non-ToT strategies tie, so the
+table says more about cost than about accuracy: `cot` reaches the same answer as
+`mcts` for 1/40 of the calls, and only `mcts` lifts the oracle ceiling to 100%.
+MCTS is the one strategy where the PRM pays for itself — its first answer is
+correct 75.0% of the time and PRM selection raises that to 91.7%; everywhere else
+PRM selection matches or loses to the first answer.
+
+The run also surfaced four defects in the harness itself (ToT never terminating,
+LaTeX commands read as prose, Greek control sequences dropped, `\( … \)` wrappers
+counted as part of the answer). Those are fixed and covered by tests; re-scoring
+the same recorded answers with the fixed verifier lifts `cot`,
+`self_consistency`, `best_of_n` and `mcts` to 100.0% and leaves `tot` at 83.3%.
+The table above is the raw run, not the re-scored one.
+
+#### TTRL-style self-labelling, same run
+
+A majority vote over the run's own candidates replaces the gold answer.
+`majority label acc` is how often that pseudo-label is actually correct;
+`reward acc` is how often the implied reward agrees with the gold verdict.
+
+| strategy | majority label acc | reward acc | candidates scored |
+| --- | --- | --- | --- |
+| `self_consistency` | 91.7% | 91.7% | 96 |
+| `best_of_n` | 91.7% | 91.7% | 96 |
+| `tot` | 83.3% | 88.9% | 27 |
+| `mcts` | 83.3% | 85.7% | 84 |
+
+On this subset the label-free reward is within 6 points of gold supervision for
+the multi-candidate strategies, which is the regime a TTRL loop would train in.
+`cot` is listed in the report too but has a one-vote majority, so its numbers are
+not informative.
+
+### Mock backend
+
+`reasoning-lab eval --mock --prm symbolic --data-dir data` (run id `readme-verify`,
+200 records, 0 errors, 5,887 model calls, 773,101 tokens, 31.8 s wall time on 2-way
+concurrency). These numbers characterise the harness, not any model: they exist to
+prove the plumbing is deterministic and to give a fresh clone something to compare
+against.
 
 The mock replays the dataset's reference chain, and with `flawed_rate=0.35` (plus a
 12% truncated band) it substitutes a bundled flawed chain instead. `temperature=0`
@@ -202,8 +254,8 @@ Python 3.11–3.13, plus an `eval --mock` smoke job that asserts a report is wri
   vote over the run's own candidates as a pseudo-label, with `majority label acc`
   and `reward acc` in the report. `verification/prm/labels.py` produces the
   step-level supervision such a loop would consume.
-- The table above is mock-backend data. A real-model report needs an API key, and
-  is deliberately not fabricated here.
+- The real-model table covers 12 problems on one 7B model. It is a pilot, not a
+  benchmark: too small for strategy comparisons that separate the top four.
 
 ## License
 
@@ -244,6 +296,41 @@ MIT.
 
 ### 实测数据
 
+#### 真实模型 · Qwen2.5-7B-Instruct
+
+运行 id `local-qwen25-7b-pilot`：12 题（数学 8、物理 4）× 5 策略，60 条记录、
+0 失败、874 次模型调用（缓存命中 11.7%）、343,115 tokens、4 并发耗时 19,587 s。
+后端是本地 llama.cpp 服务（`Qwen2.5-7B-Instruct-Q4_K_M`，OpenAI 兼容接口），
+PRM `symbolic`，`max_llm_calls=40`、`n_samples=8`、`branch=3`、`depth=8`。
+完整报告与该次运行的落盘文件提交在
+[`docs/reports/`](docs/reports/local-qwen25-7b-pilot.md)。
+
+| 策略 | 准确率 | oracle any | oracle PRM | 调用/题 | tokens | tokens/正确 | ECE |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `cot` | 91.7% | 91.7% | 91.7% | 1.000 | 372 | 406 | 0.209 |
+| `self_consistency` | 91.7% | 91.7% | 91.7% | 8.000 | 3022 | 3297 | 0.251 |
+| `best_of_n` | 91.7% | 91.7% | 91.7% | 8.000 | 3021 | 3296 | 0.251 |
+| `tot` | 83.3% | 91.7% | 83.3% | 15.830 | 8772 | 10527 | 0.295 |
+| `mcts` | 91.7% | 100.0% | 91.7% | 40.000 | 13404 | 14623 | 0.143 |
+
+这批题量小、难度低，除 ToT 之外四种策略打平，所以这张表反映的是成本而非准确率：
+`cot` 用 mcts 的 1/40 调用量得到同样的答案，只有 mcts 把 oracle 上限抬到 100%。
+mcts 也是唯一让 PRM 产生收益的策略——首答正确率 75.0%，按 PRM 选择后升到 91.7%；
+其余策略按 PRM 选择都不优于首答。
+
+这次运行同时暴露了框架自身的四个缺陷（ToT 不终止、LaTeX 命令被当成散文、
+希腊字母控制序列被丢弃、`\( … \)` 包裹被算进答案）。这些缺陷已修复并有测试覆盖；
+用修好的验证器对同一批落盘答案重新判分，`cot`、`self_consistency`、`best_of_n`、
+`mcts` 升到 100.0%，`tot` 仍为 83.3%。上表是原始运行结果，不是重新判分后的结果。
+
+TTRL 式无标注奖励（同一次运行）：用本次运行自己的候选做多数投票替代标准答案，
+`self_consistency` 与 `best_of_n` 伪标签准确率 91.7% / 奖励准确率 91.7%（各 96 个候选），
+`tot` 83.3% / 88.9%（27 个），`mcts` 83.3% / 85.7%（84 个）。多候选策略上，
+无标注奖励与标准答案监督的差距在 6 个百分点以内，这正是 TTRL 训练所处的区间。
+`cot` 只有一个候选，多数投票无意义，报告里虽有该行但不具参考价值。
+
+#### 离线 mock 后端
+
 数据集共 40 题（数学 24、物理 16），199 条参考步骤、80 条含错变体（398 步）。
 符号验证器可判定比例 94.47%，参考步骤误判 0.0%，含错变体检出率 100.0%，
 链级 AUROC 0.9905、步级 AUROC 0.6312。
@@ -254,8 +341,7 @@ accuracy 0.832、AUC 0.899。
 0 失败、5,887 次调用、773,101 tokens、2 并发耗时 31.8 s）结果：
 cot 准确率 72.5%（1.0 次调用/题、132 tokens），self_consistency 90.0%（8.0、1060），
 best_of_n 87.5%（8.0、1060），tot 92.5%（10.22、1486），mcts 87.5%（119.95、15590）。
-**以上均为离线 mock 后端数据，用于验证框架链路与确定性，不代表任何真实模型的表现；
-真实模型报告需配好 key 后再跑，此处不做编造。**
+这组数字用于验证框架链路与确定性，不代表任何模型的表现。
 
 ### 测试与 CI
 
@@ -270,3 +356,5 @@ GRPO / RLVR 训练流程（LoRA 微调、TTRL 与 PRIME 复现）尚未实现；
 已实现的是 TTRL 成立的前提度量——用本次运行自己的候选做多数投票当伪标签，
 报告里给出伪标签准确率（`majority label acc`）与隐含奖励准确率（`reward acc`）。
 `verification/prm/labels.py` 已经产出该流程所需的步级监督标签。
+真实模型那张表只覆盖 12 题、一个 7B 模型，属于试跑而非基准，题量不足以区分
+排名靠前的四种策略。

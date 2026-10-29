@@ -1,0 +1,59 @@
+{
+  "run_id": "local-qwen25-7b-pilot",
+  "grid": {
+    "strategies": [
+      "cot",
+      "self_consistency",
+      "best_of_n",
+      "tot",
+      "mcts"
+    ],
+    "prm": "symbolic",
+    "prm_aggregator": "geomean",
+    "prm_model": null,
+    "seeds": [
+      0
+    ],
+    "concurrency": 4,
+    "save_traces": true,
+    "resume": true
+  },
+  "search": {
+    "n_samples": 8,
+    "branch_factor": 3,
+    "max_depth": 8,
+    "beam_width": 2,
+    "temperature": 0.7,
+    "top_p": null,
+    "max_tokens": 768,
+    "max_llm_calls": 40,
+    "prune_below": 0.02,
+    "answer_confidence_floor": 0.35,
+    "propose_mode": "batch",
+    "sc_selector": "vote",
+    "tot_mode": "beam",
+    "mcts_value": "prm",
+    "mcts_final": "visits",
+    "few_shot": false,
+    "seed": 0,
+    "mcts_iterations": 24,
+    "mcts_c": 1.4,
+    "mcts_rollout_depth": 5,
+    "mcts_prior_weight": 0.5,
+    "mcts_expand_children": 2
+  },
+  "problems": [
+    "m02",
+    "m06",
+    "m09",
+    "m12",
+    "m14",
+    "m17",
+    "m20",
+    "m23",
+    "p01",
+    "p05",
+    "p09",
+    "p13"
+  ]
+}
