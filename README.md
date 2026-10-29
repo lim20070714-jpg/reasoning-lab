@@ -187,7 +187,7 @@ coverage drops, and runs in CI.
 ## Tests and CI
 
 ```bash
-uv run python -m pytest tests -q      # 88 tests, offline
+uv run python -m pytest tests -q      # 95 tests, offline
 uv run ruff check src tests scripts
 uv run mypy src/reasoning_lab
 ```
@@ -198,8 +198,10 @@ Python 3.11–3.13, plus an `eval --mock` smoke job that asserts a report is wri
 ## Not in this release
 
 - GRPO / RLVR training (LoRA fine-tuning, TTRL and PRIME reproductions) is not
-  implemented. `verification/prm/labels.py` already produces the step-level
-  supervision such a loop would consume.
+  implemented. What is implemented is the measurement TTRL turns on: a majority
+  vote over the run's own candidates as a pseudo-label, with `majority label acc`
+  and `reward acc` in the report. `verification/prm/labels.py` produces the
+  step-level supervision such a loop would consume.
 - The table above is mock-backend data. A real-model report needs an API key, and
   is deliberately not fabricated here.
 
@@ -257,7 +259,7 @@ best_of_n 87.5%（8.0、1060），tot 92.5%（10.22、1486），mcts 87.5%（119
 
 ### 测试与 CI
 
-`uv run python -m pytest tests -q`（88 项，全部离线）、
+`uv run python -m pytest tests -q`（95 项，全部离线）、
 `uv run ruff check src tests scripts`、`uv run mypy src/reasoning_lab`。
 GitHub Actions 在 Python 3.11–3.13 上跑上述三项加数据集校验，并额外执行一次
 `eval --mock` 冒烟评测确认报告产出。
@@ -265,4 +267,6 @@ GitHub Actions 在 Python 3.11–3.13 上跑上述三项加数据集校验，并
 ### 暂未实现
 
 GRPO / RLVR 训练流程（LoRA 微调、TTRL 与 PRIME 复现）尚未实现；
+已实现的是 TTRL 成立的前提度量——用本次运行自己的候选做多数投票当伪标签，
+报告里给出伪标签准确率（`majority label acc`）与隐含奖励准确率（`reward acc`）。
 `verification/prm/labels.py` 已经产出该流程所需的步级监督标签。

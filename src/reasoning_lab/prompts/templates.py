@@ -54,6 +54,12 @@ def cot(problem: Problem, *, few_shot: bool = False, extra: str = "") -> Prompt:
     return _prompt(*blocks, tag="cot")
 
 
+STEP_TERMINATION = (
+    "If this step completes the solution, append `Final Answer: <the answer only>` "
+    "at the end of that same line; otherwise do not mention the final answer."
+)
+
+
 def chain_step(problem: Problem, steps: list[Step], *, hint: str = "") -> Prompt:
     """Emit exactly one next step. Used by ToT and MCTS expansion."""
     blocks = [
@@ -61,6 +67,7 @@ def chain_step(problem: Problem, steps: list[Step], *, hint: str = "") -> Prompt
         _prior_block(steps),
         "Write ONLY the next single step of the solution. Do not restate earlier steps. "
         "If the step is a calculation, show the arithmetic explicitly.",
+        STEP_TERMINATION,
     ]
     if hint:
         blocks.append(f"Direction for this step: {hint}")
@@ -75,6 +82,7 @@ def chain_step_candidates(problem: Problem, steps: list[Step], k: int) -> Prompt
         f"Propose exactly {k} distinct candidate next steps for this solution. "
         "Number them 1 to " + str(k) + ", one per line, each self-contained and showing its arithmetic. "
         "Cover different approaches rather than paraphrasing the same idea.",
+        STEP_TERMINATION.replace("this step completes", "a candidate completes"),
     ]
     return _prompt(*blocks, tag="step_candidates")
 

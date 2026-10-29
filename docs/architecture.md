@@ -19,7 +19,7 @@ ReasoningTree + TraceEvent stream
    │  ├─ sink: SSE fan-out (serving/session.py)     live view
    │  └─ StrategyOutput                             evaluation/runner.py → records.jsonl
    ▼
-evaluation/metrics.py   accuracy, oracle bounds, cost, calibration
+evaluation/metrics.py   accuracy, oracle bounds, cost, calibration, TTRL-style reward
 evaluation/report.py    report.md
 ```
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 import itertools
 import re
 import unicodedata
+import warnings
 from functools import lru_cache
 
 import sympy as sp
@@ -44,6 +45,15 @@ KNOWN_WORDS = {
     "int", "lim", "floor", "ceil", "sign", "Im", "Re", "area", "speed", "force", "mass",
     "time", "volt", "ohm", "mol", "joule", "watt", "newton", "hertz", "kelvin", "radius",
 }
+GREEK_NAMES = [
+    "alpha", "beta", "gamma", "delta", "epsilon", "varepsilon", "zeta", "eta", "theta",
+    "iota", "kappa", "lambda", "mu", "nu", "xi", "pi", "rho", "sigma", "tau", "upsilon",
+    "phi", "varphi", "chi", "psi", "omega",
+    "Gamma", "Delta", "Theta", "Lambda", "Xi", "Pi", "Sigma", "Upsilon", "Phi", "Psi", "Omega",
+]
+LATEX_GREEK = {name: name for name in GREEK_NAMES}
+# a bare theta after latex_to_source is math, not a prose word
+KNOWN_WORDS |= {name.lower() for name in GREEK_NAMES}
 PROSE_WORD_RE = re.compile(r"^[A-Za-z]{2,}$")
 STOPWORDS = {
     "so", "if", "it", "we", "is", "in", "on", "by", "as", "at", "be", "an", "to", "or", "no", "of",
@@ -118,7 +128,7 @@ def latex_to_source(raw: str) -> str:
         if s2 == s:
             break
         s = s2
-    s = re.sub(r"\\[a-zA-Z]+", " ", s)
+    s = re.sub(r"\\([a-zA-Z]+)", lambda m: f" {LATEX_GREEK.get(m.group(1), '')} ", s)
     s = s.replace("{", "(").replace("}", ")").replace("|", "")
     s = re.sub(r"\s*\\\s*", " ", s)
     s = s.replace("**_", "**")
@@ -141,10 +151,16 @@ def parse_math(raw: str) -> sp.Expr | None:
     if "%" in src:
         src = re.sub(r"(\d+(?:\.\d+)?)\s*%", r"(\1/100)", src)
     try:
-        expr = parse_expr(src, transformations=TRANSFORMS, evaluate=True)
+        with warnings.catch_warnings():
+            # compiling a malformed candidate raises SyntaxWarning, which is
+            # already handled by the UNKNOWN verdict below
+            warnings.simplefilter("ignore", SyntaxWarning)
+            expr = parse_expr(src, transformations=TRANSFORMS, evaluate=True)
     except Exception:
         try:
-            expr = sp.sympify(src)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", SyntaxWarning)
+                expr = sp.sympify(src)
         except Exception:
             return None
     if expr is None or isinstance(expr, (bool, sp.core.relational.Relational)):
@@ -185,7 +201,10 @@ def looks_like_math(source: str) -> bool:
     a product of single-letter symbols, and the verifier confidently "checks"
     nonsense instead of reporting that it could not parse the step.
     """
-    words = [w for w in re.findall(r"[A-Za-z]{2,}", source)]
+    # \times, \cdot, \frac are operators, not words; count only letters that
+    # are not part of a TeX control sequence
+    stripped = re.sub(r"\\[a-zA-Z]+", " ", source)
+    words = [w for w in re.findall(r"[A-Za-z]{2,}", stripped)]
     unknown = [w for w in words if w.lower() not in KNOWN_WORDS]
     return not any(len(w) >= 5 for w in unknown) and len(unknown) < 2
 
@@ -346,7 +365,9 @@ def solve_for(bindings: dict[str, sp.Basic], equations: list[sp.Basic], symbols:
     syms = [sp.Symbol(name) for name in sorted(symbols)]
     try:
         solutions = sp.solve(equations, syms, dict=True)
-    except (TypeError, ValueError, AttributeError, sp.SympifyError):
+    except (TypeError, ValueError, AttributeError, sp.SympifyError, NotImplementedError):
+        # sympy raises NotImplementedError for transcendental systems it cannot
+        # invert (gamma / zeta equations); unresolved is UNKNOWN, not an error
         return {}
     if not solutions:
         return {}

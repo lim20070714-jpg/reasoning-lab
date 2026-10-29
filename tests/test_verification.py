@@ -37,6 +37,14 @@ def test_extract_equations_from_mixed_prose():
     assert not any("area is" in e for e in equations)
 
 
+def test_latex_operators_are_not_prose():
+    text = "First, we perform the multiplications: \\[ 3 \\times 4 = 12 \\] \\[ 5 \\cdot 2 = 10 \\]"
+    equations = [e.replace(" ", "") for e in mt.extract_equations(text)]
+    assert equations == ["3\\times4=12", "5\\cdot2=10"]
+    assert mt.check_pair("3 \\times 4", "12")[0] == VerifyStatus.PASS
+    assert mt.check_pair("\\frac{1}{2} \\cdot 8", "4")[0] == VerifyStatus.PASS
+
+
 def test_split_chained_equality():
     pairs = mt.split_equation("3*4 = 12 = 6*2")
     assert pairs == [("3*4", "12"), ("12", "6*2")]
@@ -124,3 +132,17 @@ def test_symbolic_answers_match():
 def test_empty_answer_never_matches():
     assert answers_match(None, "7") == (False, "empty")
     assert answers_match("", "7") == (False, "empty")
+
+
+def test_uninvertible_system_resolves_to_unknown_not_an_error():
+    # sympy raises NotImplementedError on gamma equations; the run must survive
+    n, r = sp.symbols("n r")
+    eq = n * r * sp.gamma(r + 1) * sp.gamma(n - r + 1) - sp.gamma(n + 1)
+    assert mt.solve_for({}, [eq], {"n", "r"}) == {}
+
+
+def test_math_delimiters_are_not_part_of_the_answer():
+    # a real-model run answered "\( 4\pi \)" against the gold "4*pi"
+    assert answers_match(r"\( 4\pi \)", "4*pi")[0]
+    assert answers_match(r"\[ 12 \]", "12")[0]
+    assert answers_match(r"$$\frac{1}{2}$$", "0.5")[0]

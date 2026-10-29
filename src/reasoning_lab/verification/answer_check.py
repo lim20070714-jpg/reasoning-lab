@@ -17,6 +17,13 @@ UNIT_RE = re.compile(
 THOUSANDS_RE = re.compile(r"(?<=\d),(?=\d{3}(?:\D|$))")
 
 
+def _strip_math_delimiters(text: str) -> str:
+    """Drop ``$…$`` / ``$$…$$`` / ``\\(…\\)`` / ``\\[…\\]`` wrappers around an answer."""
+    out = re.sub(r"^\s*(?:\$\$|\\\(|\\\[)\s*", "", text)
+    out = re.sub(r"\s*(?:\$\$|\\\)|\\\])\s*[.,;]?$", "", out)
+    return out
+
+
 def normalize_answer(text: str | None) -> str:
     if text is None:
         return ""
@@ -24,6 +31,7 @@ def normalize_answer(text: str | None) -> str:
     s = re.sub(r"^\s*(?:the\s+)?(?:final\s+)?answer\s*[:=：]?\s*", "", s, flags=re.I)
     s = LATEX_WRAPPER_RE.sub(r"\1", s)
     s = s.replace("\\!", "").replace("\\,", "").replace("~", " ")
+    s = _strip_math_delimiters(s)
     s = s.strip().strip("$").strip()
     s = mt.normalize_unicode(s)
     s = THOUSANDS_RE.sub("", s)

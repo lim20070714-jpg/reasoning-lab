@@ -3,6 +3,65 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 follow semantic versioning.
 
+## [0.2.0] - 2026-10-28
+
+First run against a real model, and the three defects it exposed.
+
+### Added
+
+- **TTRL-style self-labelling** (`evaluation/metrics.py:ttrl_stats`): takes the
+  majority vote over the answers a run actually produced, treats it as the
+  pseudo-label, and reports two numbers — `majority label acc` (how often that
+  label is right against the gold answer) and `reward acc` (how often the implied
+  reward, "candidate matches the majority", agrees with the true verdict). This
+  measures the label-free reward a TTRL loop would train on without any gold
+  answers. Surfaced as a `## TTRL-style self-labelling` section in the report and
+  in `summarise()`; single-chain strategies show a one-vote majority and are not
+  meaningful there.
+- **Termination contract for step prompts** (`prompts/templates.py:STEP_TERMINATION`):
+  the step prompt now asks the model to append `Final Answer: <answer>` on the
+  line that completes a solution, and to say nothing about the answer otherwise.
+  Candidate prompts get the same instruction with "a candidate completes".
+
+### Fixed
+
+- **ToT walked a real model to the depth limit without ever terminating.** With
+  no instruction to close the chain, ToT (beam mode) expanded to depth 16, found
+  no terminal node, and returned an empty answer; the recorded run showed 0
+  candidates on the first real-model problem. With the termination contract the
+  same problem answers `15` from 3 agreeing candidates in 15 calls.
+- **The symbolic verifier counted LaTeX commands as prose.** `\times` and friends
+  matched the "two or more letters" prose test, so arithmetic steps written in
+  LaTeX were classified as non-math and came back UNKNOWN — 3 of 4 CoT steps in
+  the first real-model trace. `looks_like_math` now strips `\command` sequences
+  before the prose check, and a regression test pins it.
+- **The verifier aborted a whole job when sympy could not invert the system.**
+  `sp.solve` raises `NotImplementedError` on transcendental equations (gamma
+  functions in a combinatorics chain), which escaped `solve_for` and was recorded
+  as a job error — 3 of 56 jobs in the first real-model pass. Unresolved bindings
+  now fall through to UNKNOWN, which is what the verifier contract already says.
+- **Resume treated errored jobs as finished.** The checkpoint marked any job with
+  a record as done, errors included, so a failed job was never retried. `_read_records`
+  now keeps the latest record per job key and only lists jobs without an error as
+  done, so a second pass replaces the failed record instead of duplicating or
+  dropping it.
+- **Greek control sequences were silently dropped before parsing.** `latex_to_source`
+  strips every `\command`, so `4\pi` reached sympy as `4` and `2\theta+1` as `2+1`
+  — a wrong parse is worse than no parse, because the verifier then "checked" a
+  different expression. Greek names now map to their sympy identifiers and count as
+  known math words rather than prose.
+- **Answer wrappers counted as part of the answer.** A real-model run answered
+  `\( 4\pi \)` to a gold `4*pi` and was scored wrong: `normalize_answer` stripped
+  `$` but not `\(…\)`, `\[…\]` or `$$…$$`. All four wrappers are stripped now.
+- Stray `SyntaxWarning` from sympy when re-parsing a step is suppressed inside
+  `parse_math` instead of leaking into eval stderr.
+
+### Changed
+
+- Tests: 88 → 95, covering the TTRL metric (correct majority, incorrect majority,
+  report section), the LaTeX/prose verifier case, the uninvertible-system case, the
+  error-retrying resume and the two answer-parsing fixes.
+
 ## [0.1.0] - 2026-10-18
 
 First release: strategy harness, PRM layer, evaluation runner, interactive

@@ -76,11 +76,15 @@ def default_run_id(*, prefix: str = "run") -> str:
     return f"{prefix}-{time.strftime('%Y%m%d-%H%M%S')}"
 
 
-def _read_records(path: Path) -> tuple[list[EvalRecord], set[str]]:
-    records: list[EvalRecord] = []
-    keys: set[str] = set()
+def _read_records(path: Path) -> tuple[dict[str, EvalRecord], set[str]]:
+    """Read the checkpoint; the latest record per job key wins.
+
+    A job whose latest record carries an ``error`` is left out of the done set so
+    the next pass retries it — a transient API failure should not poison a run.
+    """
     if not path.is_file():
-        return records, keys
+        return {}, set()
+    latest: dict[str, EvalRecord] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:
@@ -91,9 +95,10 @@ def _read_records(path: Path) -> tuple[list[EvalRecord], set[str]]:
         except Exception as exc:
             print(f"[runner] skipping unreadable record line: {exc}")
             continue
-        records.append(record)
-        keys.add(str(payload.get("key") or f"{record.card.strategy}|{record.card.problem_id}"))
-    return records, keys
+        key = str(payload.get("key") or f"{record.card.strategy}|{record.card.problem_id}")
+        latest[key] = record
+    done = {key for key, record in latest.items() if not record.error}
+    return latest, done
 
 
 class _AppendLog:
@@ -186,7 +191,7 @@ async def run_grid(
         encoding="utf-8",
     )
 
-    loaded, done_keys = (_read_records(records_path) if spec.resume else ([], set()))
+    loaded, done_keys = (_read_records(records_path) if spec.resume else ({}, set()))
     jobs = [
         GridJob(
             strategy=strategy,
@@ -200,7 +205,13 @@ async def run_grid(
         for problem in problems
     ]
     pending = [job for job in jobs if job.key not in done_keys]
-    result = RunResult(run_id=directory.name, directory=directory, records=loaded, skipped=len(jobs) - len(pending))
+    by_key = dict(loaded)
+    result = RunResult(
+        run_id=directory.name,
+        directory=directory,
+        records=list(by_key.values()),
+        skipped=len(jobs) - len(pending),
+    )
 
     records_log = _AppendLog(records_path)
     traces_log = _AppendLog(traces_path)
@@ -221,14 +232,14 @@ async def run_grid(
                 await traces_log.write(
                     {"key": job.key, "problem_id": job.problem.id, "seed": job.seed, "tree": tree.model_dump()}
                 )
-            result.records.append(record)
+            by_key[job.key] = record
             if record.error:
                 result.errors.append(f"{job.key}: {record.error}")
             if on_progress:
                 on_progress(job.key, record)
 
     await asyncio.gather(*(worker(job) for job in pending))
-    result.records.sort(key=lambda r: (r.card.strategy, r.card.problem_id))
+    result.records = sorted(by_key.values(), key=lambda r: (r.card.strategy, r.card.problem_id))
     return result
 
 

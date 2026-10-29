@@ -327,6 +327,44 @@ def verifier_discrimination(problems: Sequence[Problem]) -> dict[str, Any]:
     }
 
 
+def ttrl_stats(records: Sequence[EvalRecord]) -> dict[str, Any]:
+    """TTRL-style self-labelling: majority vote as a label-free reward.
+
+    TTRL (Zuo et al., 2025) turns a test-time majority vote into the training
+    signal, so the value of that signal can be measured without training:
+    how often the majority label is the true answer, and how often the reward it
+    implies agrees with the real verdict on each candidate.
+
+    A single-chain strategy such as CoT has a degenerate majority (one vote), so
+    its numbers say nothing about voting quality; compare the multi-candidate
+    strategies instead.
+    """
+    label_hits = label_total = 0
+    cand_total = cand_hits = 0
+    with_candidates = 0
+    for record in records:
+        pool = [c for c in record.candidates if c.answer]
+        if not pool:
+            continue
+        with_candidates += 1
+        majority = select_answer(pool, "vote")
+        if majority is None:
+            continue
+        label_total += 1
+        label_hits += answers_match(majority, record.card.gold)[0]
+        for candidate in pool:
+            reward = answers_match(candidate.answer, majority)[0]
+            cand_total += 1
+            cand_hits += reward == candidate.correct
+    return {
+        "n": len(records),
+        "with_candidates": with_candidates,
+        "majority_label_accuracy": round(label_hits / label_total, 4) if label_total else None,
+        "reward_accuracy": round(cand_hits / cand_total, 4) if cand_total else None,
+        "candidates_scored": cand_total,
+    }
+
+
 def summarise(records: Sequence[EvalRecord]) -> dict[str, Any]:
     clean = [r for r in records if not r.error]
     errored = len(records) - len(clean)
@@ -364,6 +402,7 @@ def summarise(records: Sequence[EvalRecord]) -> dict[str, Any]:
         "calibration": expected_calibration_error(clean),
         "discrimination": discrimination_stats(clean),
         "rerank": rerank_table(clean),
+        "ttrl": ttrl_stats(clean),
     }
 
 
@@ -396,5 +435,6 @@ __all__ = [
     "select_answer",
     "split_steps_text",
     "summarise",
+    "ttrl_stats",
     "verifier_discrimination",
 ]

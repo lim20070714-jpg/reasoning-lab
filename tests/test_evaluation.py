@@ -126,6 +126,53 @@ def test_rerank_table_reports_prm_gain_over_first():
     assert table["oracle"]["accuracy"] == 1.0
 
 
+def test_ttrl_stats_measure_the_pseudo_label():
+    from reasoning_lab.evaluation.metrics import Candidate, ttrl_stats
+
+    # majority says 7 but gold is 8: both the label and the reward it implies
+    # are wrong for every candidate
+    wrong_majority = EvalRecord(
+        card=ScoreCard(problem_id="a", strategy="self_consistency", answer="7", gold="8", correct=False),
+        candidates=[
+            Candidate(node_id="1", answer="7", correct=False),
+            Candidate(node_id="2", answer="7", correct=False),
+            Candidate(node_id="3", answer="8", branch_score=0.9, correct=True),
+        ],
+    )
+    # majority says 8, which is gold: the reward matches every true verdict
+    right_majority = EvalRecord(
+        card=ScoreCard(problem_id="b", strategy="self_consistency", answer="8", gold="8", correct=True),
+        candidates=[
+            Candidate(node_id="4", answer="8", correct=True),
+            Candidate(node_id="5", answer="8", correct=True),
+            Candidate(node_id="6", answer="7", correct=False),
+        ],
+    )
+    stats = ttrl_stats([wrong_majority, right_majority])
+    assert stats["majority_label_accuracy"] == 0.5
+    assert stats["reward_accuracy"] == 0.5
+    assert stats["candidates_scored"] == 6
+    assert ttrl_stats([])["majority_label_accuracy"] is None
+
+
+def test_ttrl_reward_is_wrong_when_the_majority_is_wrong():
+    from reasoning_lab.evaluation.metrics import Candidate, ttrl_stats
+
+    # two wrong votes outvote the one correct answer, so the implied reward
+    # calls the correct candidate bad — the failure mode TTRL has to live with
+    record = EvalRecord(
+        card=ScoreCard(problem_id="a", strategy="best_of_n", answer="7", gold="8", correct=False),
+        candidates=[
+            Candidate(node_id="1", answer="7", correct=False),
+            Candidate(node_id="2", answer="7", correct=False),
+            Candidate(node_id="3", answer="8", correct=True),
+        ],
+    )
+    stats = ttrl_stats([record])
+    assert stats["majority_label_accuracy"] == 0.0
+    assert stats["reward_accuracy"] == 0.0
+
+
 @pytest.mark.asyncio
 async def test_run_grid_writes_records_and_resumes(tmp_path, problems):
     subset = problems[:2]
@@ -147,6 +194,27 @@ async def test_run_grid_writes_records_and_resumes(tmp_path, problems):
     resumed = await run_grid(subset, llm=llm, config=config, spec=spec, run_dir=tmp_path, run_id="unit")
     assert resumed.skipped == 4, "a second pass must reuse the checkpoint"
     assert len(resumed.records) == 4
+    await llm.aclose()
+
+
+@pytest.mark.asyncio
+async def test_resume_retries_a_job_whose_record_errored(tmp_path, problems):
+    subset = problems[:2]
+    llm = MockLLM(mock_solutions(subset))
+    config = replace(SearchConfig(), n_samples=4, max_llm_calls=24, max_depth=4, branch_factor=2)
+    spec = GridSpec(strategies=("cot",), prm="symbolic", concurrency=1, save_traces=False)
+    await run_grid(subset, llm=llm, config=config, spec=spec, run_dir=tmp_path, run_id="retry")
+    path = tmp_path / "retry" / "records.jsonl"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    payload = json.loads(lines[0])
+    payload["error"] = "NotImplementedError: could not solve"
+    lines[0] = json.dumps(payload, ensure_ascii=False)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    retried = await run_grid(subset, llm=llm, config=config, spec=spec, run_dir=tmp_path, run_id="retry")
+    assert retried.skipped == 1, "only the healthy record is reused"
+    assert not retried.errors
+    assert len(retried.records) == 2, "the errored record must be replaced, not duplicated"
     await llm.aclose()
 
 
@@ -180,6 +248,22 @@ def test_report_renders_all_sections(problems):
     assert "## Dataset" in text
     assert "unit-run" in text
     assert "NaN" not in text
+
+
+def test_report_includes_ttrl_section_when_candidates_exist():
+    from reasoning_lab.evaluation.metrics import Candidate
+
+    record = EvalRecord(
+        card=ScoreCard(problem_id="a", strategy="self_consistency", answer="8", gold="8", correct=True),
+        candidates=[
+            Candidate(node_id="1", answer="8", correct=True),
+            Candidate(node_id="2", answer="8", correct=True),
+            Candidate(node_id="3", answer="7", correct=False),
+        ],
+    )
+    text = build_report([record])
+    assert "## TTRL-style self-labelling" in text
+    assert "100.0%" in text
 
 
 def test_summary_counts_are_consistent():

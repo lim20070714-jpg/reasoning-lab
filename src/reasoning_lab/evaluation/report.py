@@ -219,6 +219,34 @@ def build_report(
             "",
         ]
 
+    ttrl_rows: list[list[str]] = []
+    for name, summary in by_strategy.items():
+        stats = summary.get("ttrl") or {}
+        if not stats.get("with_candidates"):
+            continue
+        ttrl_rows.append(
+            [
+                f"`{name}`",
+                _fmt(stats["with_candidates"]),
+                _pct(stats["majority_label_accuracy"]),
+                _pct(stats["reward_accuracy"]),
+                _fmt(stats["candidates_scored"]),
+            ]
+        )
+    if ttrl_rows:
+        lines += [
+            "## TTRL-style self-labelling",
+            "",
+            "TTRL replaces the gold answer with a majority vote over the run's own candidates. "
+            "`majority label acc` is how often that label is actually correct; `reward acc` is how "
+            "often the implied reward (candidate matches the majority) agrees with the true verdict. "
+            "Single-chain strategies have a one-vote majority, so read this table on the "
+            "multi-candidate strategies.",
+            "",
+            _table(["strategy", "problems", "majority label acc", "reward acc", "candidates scored"], ttrl_rows),
+            "",
+        ]
+
     for name, summary in by_strategy.items():
         bins = (summary.get("calibration") or {}).get("bins") or []
         if not bins:
